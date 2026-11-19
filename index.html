@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f3eb" />
+    <meta name="description" content="A little bouquet for Samantha: carnations and tulips in pastel pink, butter yellow, and baby blue. Forever in bloom." />
+    <title>Forever in bloom · For Samantha</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="page-header">
+        <span class="wordmark"><span class="little-star" aria-hidden="true">*</span> A little something</span>
+        <span class="header-signature">From Jayden, with love</span>
+      </header>
+
+      <main class="gift-layout">
+        <section class="introduction" aria-labelledby="gift-heading">
+          <p class="eyebrow">For Samantha</p>
+          <h1 id="gift-heading">Your favorites.<br /><em>Forever</em> in bloom.</h1>
+          <p class="introduction-copy">Carnations and tulips, in the colors that make me think of you. A little bouquet that never has to say goodbye.</p>
+
+          <ul class="palette" aria-label="The bouquet's colors">
+            <li><span class="swatch swatch-pink" aria-hidden="true"></span>Pastel pink</li>
+            <li><span class="swatch swatch-yellow" aria-hidden="true"></span>Butter yellow</li>
+            <li><span class="swatch swatch-blue" aria-hidden="true"></span>Baby blue</li>
+          </ul>
+
+          <details class="gift-note">
+            <summary><span>A small note for you</span><span class="note-indicator" aria-hidden="true"></span></summary>
+            <div class="note-content">
+              <p>Your favorite flowers, your favorite colors. A little reminder that I’m thinking of you, and that you make the everyday feel a little more beautiful.</p>
+              <p class="note-signature">With love,<br /><span>Jayden</span></p>
+            </div>
+          </details>
+        </section>
+
+        <figure class="bouquet-window" aria-labelledby="bouquet-caption">
+          <figcaption class="window-heading" id="bouquet-caption">
+            <span>A bouquet, just for you</span>
+            <span class="window-detail">Flowers, in characters</span>
+          </figcaption>
+          <div class="canvas-frame">
+            <canvas id="bouquet" aria-label="A rotating three-dimensional ASCII bouquet of carnations and tulips in pastel pink, butter yellow, and baby blue." aria-describedby="bouquet-instructions">
+              A bouquet of carnations and tulips, drawn with text characters in pastel pink, butter yellow, and baby blue. A little gift for Samantha, with love from Jayden.
+            </canvas>
+          </div>
+          <div class="window-footer">
+            <p id="bouquet-instructions"><span class="drag-mark" aria-hidden="true">↔</span> Drag gently to turn</p>
+            <button id="motion-toggle" type="button" aria-pressed="false">
+              <span class="motion-icon" aria-hidden="true"></span>
+              <span id="motion-label">Pause rotation</span>
+            </button>
+          </div>
+        </figure>
+      </main>
+
+      <footer class="page-footer">
+        <span>A few favorite things. One very favorite person.</span>
+        <span class="footer-flourish" aria-hidden="true">— J.</span>
+      </footer>
+    </div>
+  </body>
+</html>
