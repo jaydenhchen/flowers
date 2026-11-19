@@ -2,7 +2,7 @@
 
 A little bouquet that never has to say goodbye.
 
-**Site:** https://jaydenhchen.github.io/for-samantha/
+**Site:** https://jaydenhchen.github.io/flowers/
 
 A spinning, three-dimensional ASCII arrangement of five tulips and four carnations in pastel pink, butter yellow, and baby blue, with curved stems, leaves, paper wrapping, and a ribbon. Made for Samantha, from Jayden.
 
