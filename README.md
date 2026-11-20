@@ -14,6 +14,8 @@ The browser port retains the reference's golden-angle arrangement, rotating 3D p
 
 Flower heads remain readable as their positions rotate. Carnations use scalloped silhouettes with raised, irregular layers; tulips use curved cup surfaces with a three-point rim, recessed seams, and fine petal veins. Each bloom has a cached 128×128 relief map containing surface normals, height, and crease occlusion. Directional key lighting, rim lighting, and specular highlights shade each character; the depth buffer uses the petals' relief rather than a flat flower disc.
 
+Tulip cups fan outward along their stems instead of sharing a fixed upright angle. Each cup's projected 3D base determines its screen-space tilt, foreshortening, and depth slope. Continuous tubular stems end at those bases, with small green calyces joining the stems to the petals; the attachment follows the same projection throughout a full rotation.
+
 The terminal grid uses 9px glyphs on desktop and 6px on narrow or short screens. Each material has 64 tone-mapped shades, with pale highlights that preserve the pink, butter yellow, and baby blue palette. Canvas output consists only of individual monospace ASCII characters.
 
 ## Run locally

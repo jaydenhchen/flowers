@@ -133,13 +133,58 @@ function buildScene() {
     const z = dz * distance;
     const isTulip = tulips.has(i);
     const flowerSeed = random() * TAU;
-    heads.push({ x, y, z, tulip: isTulip, material: i % 3,
-      radius: isTulip ? 0.175 : 0.155 + random() * 0.022,
-      surface: buildPetalRelief(isTulip, flowerSeed) });
-    for (let j = 0; j < 90; j++) {
-      const t = j / 89;
-      point(x * (1 - t), (y - 0.03) * (1 - t) - 0.12 * t, z * (1 - t),
-        dx, 0, dz, 3, -0.10);
+    const radius = isTulip ? 0.175 : 0.155 + random() * 0.022;
+    const [ax, ay, az] = normal(x, y + 0.12, z);
+    const baseX = isTulip ? x - ax * radius * 1.18 : x;
+    const baseY = isTulip ? y - ay * radius * 1.18 : y - 0.03;
+    const baseZ = isTulip ? z - az * radius * 1.18 : z;
+    heads.push({ x, y, z, baseX, baseY, baseZ, tulip: isTulip, material: i % 3,
+      radius, surface: buildPetalRelief(isTulip, flowerSeed) });
+    if (isTulip) {
+      const [ux, uy, uz] = normal(ay, -ax, 0);
+      const vx = ay * uz - az * uy;
+      const vy = az * ux - ax * uz;
+      const vz = ax * uy - ay * ux;
+      // A continuous tube ends at the cup's actual base, not at its center.
+      for (let j = 0; j < 100; j++) {
+        const t = j / 99;
+        for (let k = 0; k < 8; k++) {
+          const a = k / 8 * TAU;
+          const c = Math.cos(a);
+          const s = Math.sin(a);
+          const nx = ux * c + vx * s;
+          const ny = uy * c + vy * s;
+          const nz = uz * c + vz * s;
+          point(baseX * t + nx * 0.006, -0.12 + (baseY + 0.12) * t + ny * 0.006,
+            baseZ * t + nz * 0.006, nx, ny, nz, 3, -0.04);
+        }
+      }
+      // Small sepals bridge the pedicel and the lower petal rim.
+      for (let sepal = 0; sepal < 4; sepal++) {
+        const a = sepal / 4 * TAU;
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        const nx = ux * c + vx * s;
+        const ny = uy * c + vy * s;
+        const nz = uz * c + vz * s;
+        for (let j = 0; j < 14; j++) {
+          const t = j / 13;
+          const spread = 0.024 * Math.sin(Math.PI * t);
+          for (let k = -1; k <= 1; k++) {
+            const across = k * 0.005 * Math.sin(Math.PI * t);
+            point(baseX + ax * t * 0.06 + nx * spread + (vx * c - ux * s) * across,
+              baseY + ay * t * 0.06 + ny * spread + (vy * c - uy * s) * across,
+              baseZ + az * t * 0.06 + nz * spread + (vz * c - uz * s) * across,
+              nx, ny, nz, 3, 0.05);
+          }
+        }
+      }
+    } else {
+      for (let j = 0; j < 90; j++) {
+        const t = j / 89;
+        point(baseX * (1 - t), baseY * (1 - t) - 0.12 * t, baseZ * (1 - t),
+          dx, 0, dz, 3, -0.10);
+      }
     }
   }
 
@@ -360,33 +405,48 @@ export function createBouquet(canvas, { paused = false } = {}) {
         points[i + 6] * SHADES + Math.floor(b * SHADES));
     }
 
-    // Camera-facing head stamps are the reference's essential readability trick.
-    // Their centers still move in true 3D, with perspective, lighting, and occlusion.
+    // Keep relief readable, but anchor and orient each tulip from its 3D stem base.
+    // Frame rotations use pixels, not character cells, to preserve the cup's shape.
     for (const head of heads) {
       project(head.x, head.y, head.z);
       const fx = px;
       const fy = py;
       const z = pz;
-      const rx = head.radius * pf * scaleX;
-      const ry = head.radius * pf * scaleY * (head.tulip ? 1.18 : 1);
+      const halfWidth = head.radius * pf * scaleX * cellWidth;
+      let halfHeight = head.radius * pf * scaleY * cellHeight;
+      let rotation = -angle * 0.40;
+      let depthSlope = 0;
+      if (head.tulip) {
+        project(head.baseX, head.baseY, head.baseZ);
+        const downX = (px - fx) * cellWidth;
+        const downY = (py - fy) * cellHeight;
+        rotation = Math.atan2(-downX, downY);
+        halfHeight = Math.hypot(downX, downY);
+        depthSlope = z - pz;
+      }
       const dim = -0.12 * (1 - clamp((z + 0.6) / 1.2, 0, 1));
-      const rotation = head.tulip ? 0 : angle * 0.40;
       const cr = Math.cos(rotation);
       const sr = Math.sin(rotation);
+      const boundX = (Math.abs(cr) * halfWidth + Math.abs(sr) * halfHeight) * RELIEF_EXTENT / cellWidth;
+      const boundY = (Math.abs(sr) * halfWidth + Math.abs(cr) * halfHeight) * RELIEF_EXTENT / cellHeight;
+      const inverseWidth = 1 / halfWidth;
+      const inverseHeight = 1 / halfHeight;
       const textureScale = (RELIEF_SIZE - 1) / (RELIEF_EXTENT * 2);
       const surface = head.surface;
-      for (let row = Math.floor(fy - ry * RELIEF_EXTENT) - 1; row <= Math.ceil(fy + ry * RELIEF_EXTENT); row++) {
-        const dy = (row + 0.5 - fy) / ry;
-        for (let col = Math.floor(fx - rx * RELIEF_EXTENT) - 1; col <= Math.ceil(fx + rx * RELIEF_EXTENT); col++) {
-          const dx = (col + 0.5 - fx) / rx;
-          const tx = Math.round((dx * cr - dy * sr + RELIEF_EXTENT) * textureScale);
-          const ty = Math.round((dx * sr + dy * cr + RELIEF_EXTENT) * textureScale);
+      for (let row = Math.floor(fy - boundY) - 1; row <= Math.ceil(fy + boundY); row++) {
+        const pixelY = (row + 0.5 - fy) * cellHeight;
+        for (let col = Math.floor(fx - boundX) - 1; col <= Math.ceil(fx + boundX); col++) {
+          const pixelX = (col + 0.5 - fx) * cellWidth;
+          const localX = (pixelX * cr + pixelY * sr) * inverseWidth;
+          const localY = (-pixelX * sr + pixelY * cr) * inverseHeight;
+          const tx = Math.round((localX + RELIEF_EXTENT) * textureScale);
+          const ty = Math.round((localY + RELIEF_EXTENT) * textureScale);
           if (tx < 0 || tx >= RELIEF_SIZE || ty < 0 || ty >= RELIEF_SIZE) continue;
           const index = (ty * RELIEF_SIZE + tx) * RELIEF_STRIDE;
           const height = surface[index + 3];
           if (height === -1) continue;
-          const nx = surface[index] * cr + surface[index + 1] * sr;
-          const ny = -surface[index] * sr + surface[index + 1] * cr;
+          const nx = surface[index] * cr - surface[index + 1] * sr;
+          const ny = surface[index] * sr + surface[index + 1] * cr;
           const nz = surface[index + 2];
           const diffuse = Math.max(0, nx * -0.45 + ny * -0.60 + nz * 0.66);
           const rim = Math.max(0, nx * 0.70 + ny * 0.15 + nz * 0.65);
@@ -394,7 +454,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
           const occlusion = surface[index + 4];
           const b = clamp((0.18 + 0.72 * diffuse + 0.14 * rim ** 3) * (1 - occlusion)
             + 0.14 * highlight ** 18 + dim, 0, 0.999);
-          plot(col, row, z + head.radius * (0.08 + height),
+          plot(col, row, z - localY * depthSlope + head.radius * (0.08 + height),
             petalGlyphs[Math.floor(b * petalGlyphs.length)],
             head.material * SHADES + Math.floor(b * SHADES));
         }
