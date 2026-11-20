@@ -2,7 +2,7 @@
 
 **Live:** https://jaydenhchen.github.io/flowers/
 
-A black screen with a centered, spinning ASCII bouquet. No caption, headings, cards, navigation, visible controls, or decorative website layout.
+A black screen with a centered, spinning ASCII bouquet and **I love you Samantha!** beneath it. Floating character-art hearts and small twinkling ASCII stars surround the flowers. No headings, cards, navigation, visible controls, or decorative website layout.
 
 Six ruffled carnations and four cupped tulips in pastel pink, butter yellow, and baby blue, with foliage, baby's breath, folded paper, and a ribbon.
 
@@ -10,13 +10,15 @@ Six ruffled carnations and four cupped tulips in pastel pink, butter yellow, and
 
 Adapted from Alish Sharma's [Ascii-Flower-Bouquet-](https://github.com/alishsharma17/Ascii-Flower-Bouquet-) and its `bouquet3d.py` renderer, under the [MIT License](LICENSE).
 
-The browser port retains the reference's golden-angle arrangement, rotating 3D point cloud, perspective projection, depth buffer, lighting, and camera-facing flower heads. The head silhouettes and textures are customized for carnations and tulips; the palette is customized for Samantha.
+The browser port retains the reference's golden-angle arrangement, perspective projection, depth buffer, and terminal presentation. Flower heads are now actual indexed 3D petal meshes, not camera-facing stamps or relief-map billboards. They turn with the bouquet, exposing different sides, overlapping petals, and cup interiors.
 
-Flower heads remain readable as their positions rotate. Carnations use scalloped silhouettes with raised, irregular layers; tulips use curved cup surfaces with a three-point rim, recessed seams, and fine petal veins. Each bloom has a cached 128×128 relief map containing surface normals, height, and crease occlusion. Directional key lighting, rim lighting, and specular highlights shade each character; the depth buffer uses the petals' relief rather than a flat flower disc.
+Tulips have six broad, rounded petals in two staggered whorls, a tapered base, a gently narrowed open crown, and fine veins. Carnations have five layers of curled, ruffled petals. Cached world-space vertices and surface normals rotate together; perspective-correct triangle rasterization and the shared depth buffer handle shading and occlusion.
 
-Tulip cups fan outward along their stems instead of sharing a fixed upright angle. Each cup's projected 3D base determines its screen-space tilt, foreshortening, and depth slope. Continuous tubular stems end at those bases, with small green calyces joining the stems to the petals; the attachment follows the same projection throughout a full rotation.
+Each bloom's local axis runs from its stem attachment toward its center. Tulips fan outward on those axes, including an off-center central tulip that leans and moves as the bouquet turns. Continuous tubular stems and small green calyces meet the petal bases in the same 3D coordinate system.
 
 The terminal grid uses 9px glyphs on desktop and 6px on narrow or short screens. Each material has 64 tone-mapped shades, with pale highlights that preserve the pink, butter yellow, and baby blue palette. Canvas output consists only of individual monospace ASCII characters.
+
+Hearts use multi-line ASCII silhouettes in the same pastel palette, drifting upward with a gentle sway. Background stars pulse softly between dots, crosses, and asterisks. Both effects render behind the bouquet and share its animation clock, so pause and reduced motion stop all automatic movement, not just the spin.
 
 ## Run locally
 
@@ -30,21 +32,23 @@ Open http://localhost:4173. Use HTTP rather than opening `index.html` directly, 
 
 ## Interaction
 
-- Rotation starts automatically unless reduced motion is requested.
+- Rotation, floating hearts, and star twinkles start automatically unless reduced motion is requested.
 - Drag horizontally to turn the bouquet, even while paused.
-- Tab to the canvas, then press Space to pause or resume.
+- Tab to the canvas, then press Space to pause or resume the entire animation.
 - Reduced-motion changes are respected without losing an explicit manual pause.
 
 There are no on-screen controls. A screen-reader description provides the bouquet description and keyboard instructions. The black canvas fits the viewport without page scrolling, in portrait or landscape.
 
 ## Customize
 
-- `bouquet.js`: color palettes, petal relief, flower arrangement, glyph size, and `SPIN_SPEED`.
+- `bouquet.js`: color palettes, flower arrangement, lighting, glyph size, `SPIN_SPEED`, and the visible `MESSAGE`.
+- `flowers.js`: world-space tulip and carnation petal geometry and surface normals.
+- `ambience.js`: ASCII heart silhouettes, drift, and star twinkles.
 - `styles.css`: full-viewport black terminal surface.
 - `app.js`: keyboard pause and reduced-motion preference.
-- `index.html`: page metadata and accessible description.
+- `index.html`: page metadata and accessible description; keep its message in sync when changing `MESSAGE`.
 
-Geometry and petal relief maps are built once. Typed-array character, 16-bit color, and depth buffers are reused. Surface normals are cached rather than recomputed every frame. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
+Geometry and local surface normals are built once. Typed-array vertex transforms, character, 16-bit color, and depth buffers are reused. Triangle coverage is evaluated directly on the character grid rather than rendering a pixel-resolution image first. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
 
 ## Deploy
 
