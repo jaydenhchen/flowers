@@ -1,27 +1,11 @@
 const TAU = Math.PI * 2;
 const DEPTH = -50;
 
-// Compact faces retain separate lobes; their shallow volume turns into a slim edge.
-const HEART_MASKS = [
-  [
-    ' + + ',
-    '+***+',
-    ' *** ',
-    '  +  ',
-  ],
-  [
-    ' ++ ++ ',
-    '+*****+',
-    ' .***. ',
-    '   +   ',
-  ],
-  [
-    ' ++ ++ ',
-    '+**+**+',
-    '.*****.',
-    ' .***. ',
-    '   +   ',
-  ],
+// Tiny fixed faces keep two lobes and a pointed, softly shaded base.
+const HEART_MASK = [
+  ' + + ',
+  '+***+',
+  ' .+. ',
 ];
 
 // Horizontal anchors, initial journey phases, and pastel materials are deliberate:
@@ -49,43 +33,28 @@ export function createAmbience({ glyph, shades }) {
   const dot = glyph('.');
   const plus = glyph('+');
   const asterisk = glyph('*');
-  const masks = HEART_MASKS.map((lines) => {
-    let count = 0;
-    for (let row = 0; row < lines.length; row++) {
-      for (let col = 0; col < lines[row].length; col++) {
-        if (lines[row][col] !== ' ') count++;
-      }
+  const heartWidth = HEART_MASK[0].length;
+  const heartHeight = HEART_MASK.length;
+  let cellCount = 0;
+  for (const line of HEART_MASK) {
+    for (const char of line) if (char !== ' ') cellCount++;
+  }
+  const cells = new Uint8Array(cellCount * 3);
+  const light = new Float32Array(cellCount);
+  const phase = new Float32Array(cellCount);
+  let cell = 0;
+  for (let row = 0; row < heartHeight; row++) {
+    for (let col = 0; col < heartWidth; col++) {
+      const char = HEART_MASK[row][col];
+      if (char === ' ') continue;
+      cells[cell * 3] = col;
+      cells[cell * 3 + 1] = row;
+      cells[cell * 3 + 2] = glyph(char);
+      light[cell] = char === '.' ? 0.50 : char === '+' ? 0.88 : 1;
+      phase[cell] = col * 0.85 + row * 1.3;
+      cell++;
     }
-    const pointCount = count * 3;
-    const points = new Float32Array(pointCount * 3);
-    const characters = new Uint16Array(pointCount);
-    const light = new Float32Array(pointCount);
-    const width = lines[0].length;
-    const center = (width - 1) / 2;
-    let index = 0;
-    for (let row = 0; row < lines.length; row++) {
-      // Rounded sides taper down to the same pointed base as the two faces.
-      const thickness = row === lines.length - 1 ? 0.12 : row === 0 ? 0.42 : 0.65;
-      for (let col = 0; col < lines[row].length; col++) {
-        const char = lines[row][col];
-        if (char === ' ') continue;
-        for (let layer = -1; layer <= 1; layer++) {
-          points[index * 3] = col - center;
-          points[index * 3 + 1] = row;
-          points[index * 3 + 2] = layer * thickness;
-          characters[index] = glyph(char);
-          light[index] = char === '.' ? 0.60 : char === '+' ? 0.88 : 1;
-          index++;
-        }
-      }
-    }
-    return {
-      width, height: lines.length, count: pointCount, points, characters, light,
-      depth: new Float32Array(width * lines.length),
-      levels: new Uint16Array(width * lines.length),
-      visibleGlyphs: new Uint16Array(width * lines.length),
-    };
-  });
+  }
 
   // Fixed-seed positions avoid both random frame-to-frame noise and a star grid.
   const stars = new Float64Array(42 * 6);
@@ -133,52 +102,29 @@ export function createAmbience({ glyph, shades }) {
     const heartCount = narrow || rows < 28 ? 6 : 10;
     for (let index = 0; index < heartCount; index++) {
       const layout = HEART_LAYOUT[index];
-      const maskIndex = narrow ? (columns >= 42 ? index % 2 : 0) : index % masks.length;
-      const mask = masks[maskIndex];
-      const verticalTravel = rows - mask.height - 4;
-      if (columns < mask.width + 4 || verticalTravel < 1) continue;
+      const verticalTravel = rows - heartHeight - 4;
+      if (columns < heartWidth + 4 || verticalTravel < 1) continue;
 
       const progress = (layout[1] + time * (0.025 + (index % 4) * 0.005)) % 1;
       // Fade the whole silhouette before its journey wraps; never crop at edges.
       const fade = smoothstep(progress / 0.12) * smoothstep((1 - progress) / 0.12);
       if (fade < 0.015) continue;
-      const sway = Math.min(2.5, (columns - mask.width - 4) * 0.08);
-      const horizontalTravel = columns - mask.width - 4 - sway * 2;
+      const sway = Math.min(2.5, (columns - heartWidth - 4) * 0.08);
+      const horizontalTravel = columns - heartWidth - 4 - sway * 2;
       const left = Math.round(2 + sway + layout[0] * horizontalTravel
         + Math.sin(time * (0.19 + index * 0.009) + index * 2.17) * sway);
       const top = 1 + Math.round((1 - progress) * verticalTravel);
-      const breath = 0.91 + 0.09 * Math.sin(time * 0.37 + index * 1.31);
-      const brightness = fade * breath * (0.46 + (index % 3) * 0.035);
+      const breath = 0.90 + 0.10 * Math.sin(time * 0.7 + index * 1.31);
+      const brightness = fade * breath * (0.52 + (index % 3) * 0.025);
       const material = layout[2] * shades;
-      const angle = time * (0.78 + (index % 3) * 0.09) + index * 1.11;
-      const cosine = Math.cos(angle);
-      const sine = Math.sin(angle);
-      const center = (mask.width - 1) / 2;
-      const faceLight = 0.74 + 0.26 * Math.abs(cosine);
-      mask.depth.fill(-Infinity);
-      for (let point = 0; point < mask.count; point++) {
-        const offset = point * 3;
-        const x = mask.points[offset];
-        const row = mask.points[offset + 1];
-        const z = mask.points[offset + 2];
-        const col = center + Math.round(x * cosine + z * sine);
-        if (col < 0 || col >= mask.width) continue;
-        const depth = z * cosine - x * sine;
-        const cell = row * mask.width + col;
-        if (depth <= mask.depth[cell]) continue;
-        mask.depth[cell] = depth;
-        const lighting = faceLight * (0.88 + 0.12 * depth / (center + 0.65));
-        mask.levels[cell] = Math.max(1,
-          Math.round(maxLevel * brightness * mask.light[point] * lighting));
-        mask.visibleGlyphs[cell] = mask.characters[point];
-      }
-      for (let row = 0; row < mask.height; row++) {
-        for (let col = 0; col < mask.width; col++) {
-          const cell = row * mask.width + col;
-          if (mask.depth[cell] === -Infinity) continue;
-          plot(left + col, top + row, DEPTH + mask.depth[cell] * 0.1,
-            mask.visibleGlyphs[cell], material + mask.levels[cell]);
-        }
+      for (let cell = 0; cell < cellCount; cell++) {
+        const offset = cell * 3;
+        // A slow glint travels across the fixed face; no rotation or flashing.
+        const wave = 0.5 + 0.5 * Math.sin(time * 1.4 - phase[cell] + index * 1.73);
+        const shimmer = 0.78 + 0.30 * wave ** 4;
+        const level = Math.max(1, Math.round(maxLevel * brightness * light[cell] * shimmer));
+        plot(left + cells[offset], top + cells[offset + 1], DEPTH + 0.1,
+          cells[offset + 2], material + level);
       }
     }
   }

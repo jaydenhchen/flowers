@@ -20,7 +20,8 @@ const SURFACE_SHADE = '.,:;-=+*#%@';
 const PETAL_SHADE = '+*#%@';
 const SHADES = 64;
 const FLOWER_BOUND = 1.3;
-const FLOWER_GAP = 0.025;
+const FLOWER_GAP = 0.012;
+const FLOWER_COUNT = 14;
 const MATERIALS = [
   [255, 188, 215], // pastel pink
   [255, 236, 164], // butter yellow
@@ -51,16 +52,16 @@ function buildScene() {
 
   // Golden-angle candidates are spread just enough to separate all petal volumes.
   const golden = Math.PI * (3 - Math.sqrt(5));
-  const tulips = new Set([0, 3, 6, 8]);
-  for (let i = 0; i < 10; i++) {
-    const elevation = (88 - 60 * Math.sqrt(i / 9)) * Math.PI / 180;
+  const tulips = new Set([0, 3, 6, 8, 11, 13]);
+  for (let i = 0; i < FLOWER_COUNT; i++) {
+    const elevation = (88 - 60 * Math.sqrt(i / (FLOWER_COUNT - 1))) * Math.PI / 180;
     const azimuth = i * golden;
     const dx = Math.cos(elevation) * Math.cos(azimuth);
     const dy = Math.sin(elevation);
     const dz = Math.cos(elevation) * Math.sin(azimuth);
     const distance = 0.64 * (0.92 + random() * 0.13);
     const x = i === 0 ? 0.14 : dx * distance;
-    const y = 0.12 + dy * distance + (i === 0 ? 0.10 : 0);
+    const y = 0.12 + dy * distance + (i === 0 ? 0.02 : 0);
     const z = i === 0 ? 0.10 : dz * distance;
     const isTulip = tulips.has(i);
     const flowerSeed = random() * TAU;
@@ -68,8 +69,40 @@ function buildScene() {
     heads.push({ x, y, z, tulip: isTulip, material: i % 3, radius, seed: flowerSeed });
   }
 
-  // Every petal fits inside 1.3 radii. Uniform expansion preserves the dome
-  // while guaranteeing a real 3D gap, independent of camera or spin angle.
+  // Resolve crowded pairs locally instead of spreading the entire bouquet
+  // around its single closest pair. All petals fit inside 1.3-radius spheres.
+  for (let pass = 0; pass < 32; pass++) {
+    let moved = false;
+    for (let i = 0; i < heads.length; i++) {
+      for (let j = i + 1; j < heads.length; j++) {
+        const a = heads[i];
+        const b = heads[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dz = b.z - a.z;
+        const distance = Math.hypot(dx, dy, dz);
+        const required = FLOWER_BOUND * (a.radius + b.radius) + FLOWER_GAP;
+        if (distance >= required) continue;
+        const correction = (required - distance) * 0.5 / distance;
+        a.x -= dx * correction;
+        a.y -= dy * correction;
+        a.z -= dz * correction;
+        b.x += dx * correction;
+        b.y += dy * correction;
+        b.z += dz * correction;
+        moved = true;
+      }
+    }
+    // Keep petals above the paper's highest folded rim (Y = 0.33).
+    for (const head of heads) {
+      const minimumY = 0.34 + FLOWER_BOUND * head.radius;
+      if (head.y >= minimumY) continue;
+      head.y = minimumY;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  // A final uniform correction guarantees the gap, including rounding residue.
   let spread = 1;
   for (let i = 0; i < heads.length; i++) {
     for (let j = i + 1; j < heads.length; j++) {
