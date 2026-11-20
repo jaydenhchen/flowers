@@ -10,6 +10,7 @@ import { createAmbience } from './ambience.js';
 const TAU = Math.PI * 2;
 const TILT = 0.30;
 const CAM_DIST = 4;
+const CAMERA_TARGET_Y = 0.20;
 const SPIN_SPEED = 0.6;
 const FPS = 24;
 const MESSAGE = 'I love you Samantha!';
@@ -18,6 +19,8 @@ const GLYPHS = ' .,:;-=+*#%@';
 const SURFACE_SHADE = '.,:;-=+*#%@';
 const PETAL_SHADE = '+*#%@';
 const SHADES = 64;
+const FLOWER_BOUND = 1.3;
+const FLOWER_GAP = 0.025;
 const MATERIALS = [
   [255, 188, 215], // pastel pink
   [255, 236, 164], // butter yellow
@@ -46,7 +49,7 @@ function buildScene() {
     points.push(x, y, z, nx, ny, nz, material, tone);
   }
 
-  // The reference's golden-angle dome gives a full, compact bouquet at every angle.
+  // Golden-angle candidates are spread just enough to separate all petal volumes.
   const golden = Math.PI * (3 - Math.sqrt(5));
   const tulips = new Set([0, 3, 6, 8]);
   for (let i = 0; i < 10; i++) {
@@ -56,19 +59,39 @@ function buildScene() {
     const dy = Math.sin(elevation);
     const dz = Math.cos(elevation) * Math.sin(azimuth);
     const distance = 0.64 * (0.92 + random() * 0.13);
-    const x = i === 0 ? -0.20 : dx * distance;
-    const y = 0.12 + dy * distance;
-    const z = i === 0 ? 0.14 : dz * distance;
+    const x = i === 0 ? 0.14 : dx * distance;
+    const y = 0.12 + dy * distance + (i === 0 ? 0.10 : 0);
+    const z = i === 0 ? 0.10 : dz * distance;
     const isTulip = tulips.has(i);
     const flowerSeed = random() * TAU;
-    const radius = isTulip ? 0.175 : 0.155 + random() * 0.022;
+    const radius = isTulip ? 0.14 : 0.155 + random() * 0.022;
+    heads.push({ x, y, z, tulip: isTulip, material: i % 3, radius, seed: flowerSeed });
+  }
+
+  // Every petal fits inside 1.3 radii. Uniform expansion preserves the dome
+  // while guaranteeing a real 3D gap, independent of camera or spin angle.
+  let spread = 1;
+  for (let i = 0; i < heads.length; i++) {
+    for (let j = i + 1; j < heads.length; j++) {
+      const a = heads[i];
+      const b = heads[j];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      spread = Math.max(spread, (FLOWER_BOUND * (a.radius + b.radius) + FLOWER_GAP) / distance);
+    }
+  }
+  for (const head of heads) {
+    head.x *= spread;
+    head.y = 0.12 + (head.y - 0.12) * spread;
+    head.z *= spread;
+    const { x, y, z, radius, tulip: isTulip } = head;
     const [ax, ay, az] = normal(x, y + 0.12, z);
     const attachment = radius * (isTulip ? 1.18 : 0.55);
     const baseX = x - ax * attachment;
     const baseY = y - ay * attachment;
     const baseZ = z - az * attachment;
-    heads.push({ x, y, z, baseX, baseY, baseZ, tulip: isTulip, material: i % 3,
-      radius, seed: flowerSeed });
+    head.baseX = baseX;
+    head.baseY = baseY;
+    head.baseZ = baseZ;
     const [ux, uy, uz] = normal(ay, -ax, 0);
     const vx = ay * uz - az * uy;
     const vy = az * ux - ax * uz;
@@ -204,6 +227,28 @@ export function createBouquet(canvas, { paused = false } = {}) {
   const { positions: flowerPositions, normals: flowerNormals, tones: flowerTones,
     materials: flowerMaterials, indices: flowerIndices } = buildFlowerMesh(heads);
   const transformedFlowers = new Float32Array(flowerMaterials.length * 4);
+  let frameHalfWidth = 0;
+  let frameTop = -Infinity;
+  let frameBottom = Infinity;
+  function includeInFrame(x, y, z) {
+    const radius = Math.hypot(x, z);
+    const yp = y - CAMERA_TARGET_Y;
+    const denominator = CAM_DIST - yp * st;
+    const depthRange = radius * ct;
+    // Exact full-turn extrema: vertical projection is monotone in rotated Z;
+    // horizontal projection peaks at sin(angle) = depthRange / denominator.
+    frameHalfWidth = Math.max(frameHalfWidth,
+      CAM_DIST * radius / Math.sqrt(denominator * denominator - depthRange * depthRange));
+    const near = CAM_DIST * (yp * ct - radius * st) / (denominator - depthRange);
+    const far = CAM_DIST * (yp * ct + radius * st) / (denominator + depthRange);
+    frameTop = Math.max(frameTop, near, far);
+    frameBottom = Math.min(frameBottom, near, far);
+  }
+  for (let i = 0; i < points.length; i += 8) includeInFrame(points[i], points[i + 1], points[i + 2]);
+  for (let i = 0; i < flowerPositions.length; i += 3) {
+    includeInFrame(flowerPositions[i], flowerPositions[i + 1], flowerPositions[i + 2]);
+  }
+  for (const baby of babies) includeInFrame(baby.x, baby.y, baby.z);
   const ambience = createAmbience({ glyph, shades: SHADES });
   const palette = MATERIALS.flatMap(rgb => Array.from({ length: SHADES }, (_, i) => {
     const value = i / (SHADES - 1);
@@ -254,7 +299,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
   function project(x, y, z) {
     const xr = x * ca - z * sa;
     const zr = x * sa + z * ca;
-    const yp = y - 0.20;
+    const yp = y - CAMERA_TARGET_Y;
     const yt = yp * ct - zr * st;
     pz = yp * st + zr * ct;
     pf = CAM_DIST / (CAM_DIST - pz);
@@ -295,16 +340,19 @@ export function createBouquet(canvas, { paused = false } = {}) {
     context.textAlign = 'center';
     columns = Math.floor(width / cellWidth);
     rows = Math.floor(height / cellHeight);
-    const scale = Math.max(1, Math.min((rows - 9) / 1.85, (columns - 8) * cellWidth / cellHeight / 2.0));
-    scaleX = scale * cellHeight / cellWidth;
-    scaleY = scale;
-    centerX = columns / 2;
-    centerY = (rows - 4) / 2;
     messageSize = width < 600 || height < 500 ? 12 : 15;
     messageFont = `500 ${messageSize}px ${FONT}`;
     context.font = messageFont;
     messageWidth = context.measureText(MESSAGE).width;
-    messageY = Math.min(height - messageSize * 1.5, (centerY + scaleY * 0.82 + 2) * cellHeight);
+    const messageRows = messageSize * 2.8 / cellHeight;
+    const scale = Math.max(1, Math.min((rows - 8 - messageRows) / (frameTop - frameBottom),
+      (columns - 8) * cellWidth / cellHeight / (frameHalfWidth * 2)));
+    scaleX = scale * cellHeight / cellWidth;
+    scaleY = scale;
+    centerX = columns / 2;
+    const contentTop = (rows - ((frameTop - frameBottom) * scale + messageRows)) / 2;
+    centerY = contentTop + frameTop * scale;
+    messageY = (contentTop + (frameTop - frameBottom) * scale + messageRows * 0.6) * cellHeight;
     context.font = sceneFont;
     depths = new Float32Array(columns * rows);
     characters = new Uint8Array(columns * rows);

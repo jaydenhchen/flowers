@@ -181,33 +181,38 @@ export function buildFlowerMesh(heads) {
     }
 
     if (head.tulip) {
-      // Three outer petals and three staggered inner petals form one closed
-      // tapered cup. Their tall oval rims overlap rather than radiating flat.
+      // Six long oval petals overlap in staggered whorls around a narrow foot.
+      // The lower-middle belly closes gently toward a small, scalloped mouth.
+      // In local radius units: Y is [-1.18, 1.015], radial reach < 0.798.
+      // Splitting V at 0.2 and 0.8 bounds distance from center below 1.28:
+      // the broad belly never coincides with either extreme of the height.
       for (let layer = 0; layer < 2; layer++) {
         for (let petal = 0; petal < 3; petal++) {
           const angle = rotation + petal * TAU / 3 + layer * Math.PI / 3;
-          const tip = 0.96 + layer * 0.045 + (random() - 0.5) * 0.055;
+          const tip = 0.96 + layer * 0.035 + (random() - 0.5) * 0.04;
           const phase = random() * TAU;
-          const width = 1.17 + (random() - 0.5) * 0.025;
+          const width = 1.13 + (random() - 0.5) * 0.02;
           const surface = (u, v, out) => {
             const arch = Math.cos(u * Math.PI * 0.5);
-            const rim = tip - 0.29 * (1 - arch * arch);
+            const rim = tip - 0.24 * (1 - arch * arch);
             const y = -1.18 + (rim + 1.18) * v;
-            const spread = width * (0.74 + 0.26 * Math.sin(v * Math.PI * 0.5));
+            // Broad oval shoulders overlap; rounded tips draw inward, not out
+            // into a bucket rim. Even at the foot each whorl covers the axis.
+            const spread = width * (0.94 + 0.1 * Math.sin(Math.PI * v) - 0.15 * v ** 4);
             const theta = angle + u * spread;
-            const belly = 1.06 * Math.sin(v * Math.PI * 0.62) * (1 - 0.28 * v ** 4);
-            // A gently domed petal and low longitudinal veins give smooth
-            // lighting relief, not jagged edges or randomly bumped normals.
+            const belly = v * (2.4 - 2 * v + 0.14 * v * v);
+            // Smooth longitudinal relief adds veins without carnation ruffles.
             const relief = Math.sin(Math.PI * v) * (
-              0.025 * (1 - u * u)
-              + 0.006 * Math.cos(u * Math.PI * 3 + 0.15 * Math.sin(v * Math.PI + phase))
+              0.019 * (1 - u * u)
+              + 0.004 * Math.cos(u * Math.PI * 3 + 0.15 * Math.sin(v * Math.PI + phase))
             );
-            const r = belly * (1 - layer * 0.065) + relief;
+            const r = belly * (1 - layer * 0.055) + relief;
             out[0] = Math.cos(theta) * r;
             out[1] = y;
             out[2] = Math.sin(theta) * r;
           };
-          const tone = (u, v) => -0.095 + 0.09 * v - 0.025 * Math.abs(u) ** 4;
+          const tone = (u, v) => 0.08 + 0.055 * v
+            - 0.025 * Math.abs(u) ** 4 - 0.015 * (1 - v) ** 2;
           emitGrid(surface, TULIP_ROWS, TULIP_COLUMNS, tone);
         }
       }

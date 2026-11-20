@@ -1,32 +1,26 @@
 const TAU = Math.PI * 2;
 const DEPTH = -50;
 
-// Wide character-cell silhouettes keep two distinct lobes and a pointed base.
+// Compact faces retain separate lobes; their shallow volume turns into a slim edge.
 const HEART_MASKS = [
   [
-    ' .+. .+. ',
-    '+***+***+',
-    '.*******.',
-    ' .*****. ',
-    '  .***.  ',
-    '    +    ',
+    ' + + ',
+    '+***+',
+    ' *** ',
+    '  +  ',
   ],
   [
-    ' .++. .++. ',
-    '+****+****+',
-    '.*********.',
-    ' .*******. ',
-    '   .***.   ',
-    '     +     ',
+    ' ++ ++ ',
+    '+*****+',
+    ' .***. ',
+    '   +   ',
   ],
   [
-    '  .++. .++.  ',
-    ' +****+****+ ',
-    '+***********+',
-    '.***********.',
-    '  .*******.  ',
-    '    .***.    ',
-    '      +      ',
+    ' ++ ++ ',
+    '+**+**+',
+    '.*****.',
+    ' .***. ',
+    '   +   ',
   ],
 ];
 
@@ -62,21 +56,35 @@ export function createAmbience({ glyph, shades }) {
         if (lines[row][col] !== ' ') count++;
       }
     }
-    const cells = new Uint16Array(count * 3);
-    const light = new Float32Array(count);
+    const pointCount = count * 3;
+    const points = new Float32Array(pointCount * 3);
+    const characters = new Uint16Array(pointCount);
+    const light = new Float32Array(pointCount);
+    const width = lines[0].length;
+    const center = (width - 1) / 2;
     let index = 0;
     for (let row = 0; row < lines.length; row++) {
+      // Rounded sides taper down to the same pointed base as the two faces.
+      const thickness = row === lines.length - 1 ? 0.12 : row === 0 ? 0.42 : 0.65;
       for (let col = 0; col < lines[row].length; col++) {
         const char = lines[row][col];
         if (char === ' ') continue;
-        cells[index * 3] = col;
-        cells[index * 3 + 1] = row;
-        cells[index * 3 + 2] = glyph(char);
-        light[index] = char === '.' ? 0.60 : char === '+' ? 0.88 : 1;
-        index++;
+        for (let layer = -1; layer <= 1; layer++) {
+          points[index * 3] = col - center;
+          points[index * 3 + 1] = row;
+          points[index * 3 + 2] = layer * thickness;
+          characters[index] = glyph(char);
+          light[index] = char === '.' ? 0.60 : char === '+' ? 0.88 : 1;
+          index++;
+        }
       }
     }
-    return { width: lines[0].length, height: lines.length, count, cells, light };
+    return {
+      width, height: lines.length, count: pointCount, points, characters, light,
+      depth: new Float32Array(width * lines.length),
+      levels: new Uint16Array(width * lines.length),
+      visibleGlyphs: new Uint16Array(width * lines.length),
+    };
   });
 
   // Fixed-seed positions avoid both random frame-to-frame noise and a star grid.
@@ -142,11 +150,35 @@ export function createAmbience({ glyph, shades }) {
       const breath = 0.91 + 0.09 * Math.sin(time * 0.37 + index * 1.31);
       const brightness = fade * breath * (0.46 + (index % 3) * 0.035);
       const material = layout[2] * shades;
-      for (let cell = 0; cell < mask.count; cell++) {
-        const offset = cell * 3;
-        const level = Math.max(1, Math.round(maxLevel * brightness * mask.light[cell]));
-        plot(left + mask.cells[offset], top + mask.cells[offset + 1], DEPTH,
-          mask.cells[offset + 2], material + level);
+      const angle = time * (0.78 + (index % 3) * 0.09) + index * 1.11;
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      const center = (mask.width - 1) / 2;
+      const faceLight = 0.74 + 0.26 * Math.abs(cosine);
+      mask.depth.fill(-Infinity);
+      for (let point = 0; point < mask.count; point++) {
+        const offset = point * 3;
+        const x = mask.points[offset];
+        const row = mask.points[offset + 1];
+        const z = mask.points[offset + 2];
+        const col = center + Math.round(x * cosine + z * sine);
+        if (col < 0 || col >= mask.width) continue;
+        const depth = z * cosine - x * sine;
+        const cell = row * mask.width + col;
+        if (depth <= mask.depth[cell]) continue;
+        mask.depth[cell] = depth;
+        const lighting = faceLight * (0.88 + 0.12 * depth / (center + 0.65));
+        mask.levels[cell] = Math.max(1,
+          Math.round(maxLevel * brightness * mask.light[point] * lighting));
+        mask.visibleGlyphs[cell] = mask.characters[point];
+      }
+      for (let row = 0; row < mask.height; row++) {
+        for (let col = 0; col < mask.width; col++) {
+          const cell = row * mask.width + col;
+          if (mask.depth[cell] === -Infinity) continue;
+          plot(left + col, top + row, DEPTH + mask.depth[cell] * 0.1,
+            mask.visibleGlyphs[cell], material + mask.levels[cell]);
+        }
       }
     }
   }
