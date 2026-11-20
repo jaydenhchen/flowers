@@ -16,13 +16,15 @@ Tulips have six long oval petals in two staggered whorls, a tapered foot, a full
 
 Each bloom's local axis runs from its stem attachment toward its center. Tulips fan outward on those axes, including an off-center central tulip that leans and moves as the bouquet turns. Cubic Bézier stalks rise from the tied bundle with gentle inward and sideways bows. Tangent-aligned tube sections follow each curve, and the final tangent meets the calyx and petal base smoothly. The short exposed stem ends also bend slightly below the paper.
 
-Crowded flower pairs are separated locally rather than expanding the entire dome around its single closest pair. A final uniform correction guarantees a small positive gap between every pair of enclosing petal spheres. Shared rigid rotation preserves those clearances; flowers can overlap in perspective without their meshes intersecting.
+Crowded flower pairs are separated locally inside a compact radial constraint, using conservative 1.2-radius petal bounds. Inner blooms sit higher to form a dome and let outward-fanning stalks pass underneath. A final uniform correction guarantees a small positive gap between every pair of enclosing petal spheres. Shared rigid rotation preserves those clearances; flowers can overlap in perspective without their meshes intersecting.
 
-The blooms sit lower inside a deeper paper sleeve. Its opening is fitted to the actual petal, stem, and leaf vertices rather than a fixed radius, keeping the flowers within the mouth's outline throughout rotation. Below the folded edge, the fitted cone leaves clearance so petals and foliage do not poke through its sides. Exact full-turn projection bounds keep the complete bouquet and dedication inside the viewport.
+The paper sleeve retains its original fixed dimensions: bottom radius `0.06`, opening radius `0.36`, and height `0.50` in scene units. The arrangement moves closer together instead of enlarging the paper. Petals clear the folded lip, and curved stalks remain inside the sleeve below its opening.
+
+Per-vertex bloom identities let the renderer darken the foreground contour where different heads meet in projection, keeping their edges distinct without flattening the flowers or changing their size. Exact full-turn projection bounds keep the complete bouquet and dedication inside the viewport.
 
 The terminal grid uses 9px glyphs on desktop and 6px on narrow or short screens. Each material has 64 tone-mapped shades, with pale highlights that preserve the pink, butter yellow, and baby blue palette. Canvas output consists only of individual monospace ASCII characters.
 
-Small, fixed 9-column, 5-row ASCII hearts have two bold lobes, a clear central notch, and a tapered point. Dense fill makes their silhouette readable at terminal size. They do not spin: a gentle highlight shimmers across each face while it drifts upward with a slight sway. Background stars pulse softly between dots, crosses, and asterisks. Both effects render behind the bouquet and share its animation clock, so pause and reduced motion stop all automatic movement, not just the bouquet's spin.
+Small, fixed 5-column, 4-row ASCII hearts have two solid lobes, a central notch, and a pointed base. They do not spin or sway: each rises on a fixed vertical path, including across fade-out and wraparound. Symmetric glints shimmer across the face without shifting its visible horizontal center. Background stars pulse softly between dots, crosses, and asterisks. Both effects render behind the bouquet and share its animation clock, so pause and reduced motion stop all automatic movement, not just the bouquet's spin.
 
 ## Run locally
 
@@ -36,7 +38,7 @@ Open http://localhost:4173. Use HTTP rather than opening `index.html` directly, 
 
 ## Interaction
 
-- Bouquet rotation, drifting/shimmering hearts, and star twinkles start automatically unless reduced motion is requested.
+- Bouquet rotation, straight-up shimmering hearts, and star twinkles start automatically unless reduced motion is requested.
 - Drag horizontally to turn the bouquet, even while paused.
 - Tab to the canvas, then press Space to pause or resume the entire animation.
 - Reduced-motion changes are respected without losing an explicit manual pause.
@@ -46,13 +48,13 @@ There are no on-screen controls. A screen-reader description provides the bouque
 ## Customize
 
 - `bouquet.js`: color palettes, flower arrangement, lighting, glyph size, `SPIN_SPEED`, and the visible `MESSAGE`.
-- `flowers.js`: world-space tulip and carnation petal geometry and surface normals.
-- `ambience.js`: filled ASCII heart silhouettes, shimmer, drift, and star twinkles.
+- `flowers.js`: world-space tulip and carnation petal geometry, surface normals, and bloom identities.
+- `ambience.js`: filled 5×4 ASCII hearts, symmetric shimmer, vertical paths, and star twinkles.
 - `styles.css`: full-viewport black terminal surface.
 - `app.js`: keyboard pause and reduced-motion preference.
 - `index.html`: page metadata and accessible description; keep its message in sync when changing `MESSAGE`.
 
-Geometry and local surface normals are built once. Typed-array vertex transforms, character, 16-bit color, and depth buffers are reused. Triangle coverage is evaluated directly on the character grid rather than rendering a pixel-resolution image first. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
+Geometry and local surface normals are built once. Typed-array vertex transforms, bloom-identity, character, 16-bit color, and depth buffers are reused. Triangle coverage is evaluated directly on the character grid rather than rendering a pixel-resolution image first. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
 
 ## Deploy
 

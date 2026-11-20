@@ -1,13 +1,12 @@
 const TAU = Math.PI * 2;
 const DEPTH = -50;
 
-// Rounded twin lobes, a clear notch, and a tapered point remain readable in ASCII.
+// Two solid lobes, a center notch, and a pointed base fit in a 5-by-4 face.
 const HEART_MASK = [
-  ' ##   ## ',
-  '#########',
-  ' ####### ',
-  '  #####  ',
-  '   .#.   ',
+  '## ##',
+  '#####',
+  ' ### ',
+  '  #  ',
 ];
 
 // Horizontal anchors, initial journey phases, and pastel materials are deliberate:
@@ -42,7 +41,6 @@ export function createAmbience({ glyph, shades }) {
     for (const char of line) if (char !== ' ') cellCount++;
   }
   const cells = new Uint8Array(cellCount * 3);
-  const light = new Float32Array(cellCount);
   const phase = new Float32Array(cellCount);
   let cell = 0;
   for (let row = 0; row < heartHeight; row++) {
@@ -52,8 +50,7 @@ export function createAmbience({ glyph, shades }) {
       cells[cell * 3] = col;
       cells[cell * 3 + 1] = row;
       cells[cell * 3 + 2] = glyph(char);
-      light[cell] = char === '.' ? 0.50 : char === '+' ? 0.88 : 1;
-      phase[cell] = col * 0.85 + row * 1.3;
+      phase[cell] = Math.abs(col - (heartWidth - 1) / 2) * 0.85 + row * 1.3;
       cell++;
     }
   }
@@ -111,20 +108,17 @@ export function createAmbience({ glyph, shades }) {
       // Fade the whole silhouette before its journey wraps; never crop at edges.
       const fade = smoothstep(progress / 0.12) * smoothstep((1 - progress) / 0.12);
       if (fade < 0.015) continue;
-      const sway = Math.min(2.5, (columns - heartWidth - 4) * 0.08);
-      const horizontalTravel = columns - heartWidth - 4 - sway * 2;
-      const left = Math.round(2 + sway + layout[0] * horizontalTravel
-        + Math.sin(time * (0.19 + index * 0.009) + index * 2.17) * sway);
+      const left = Math.round(2 + layout[0] * (columns - heartWidth - 4));
       const top = 1 + Math.round((1 - progress) * verticalTravel);
       const breath = 0.90 + 0.10 * Math.sin(time * 0.7 + index * 1.31);
       const brightness = fade * breath * (0.52 + (index % 3) * 0.025);
       const material = layout[2] * shades;
       for (let cell = 0; cell < cellCount; cell++) {
         const offset = cell * 3;
-        // A slow glint travels across the fixed face; no rotation or flashing.
+        // Symmetric glints change brightness, never the center or silhouette.
         const wave = 0.5 + 0.5 * Math.sin(time * 1.4 - phase[cell] + index * 1.73);
         const shimmer = 0.78 + 0.30 * wave ** 4;
-        const level = Math.max(1, Math.round(maxLevel * brightness * light[cell] * shimmer));
+        const level = Math.max(1, Math.round(maxLevel * brightness * shimmer));
         plot(left + cells[offset], top + cells[offset + 1], DEPTH + 0.1,
           cells[offset + 2], material + level);
       }

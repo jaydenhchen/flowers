@@ -26,6 +26,7 @@ function randomFromSeed(seed) {
  * Construct stem-aligned petal surfaces in world coordinates, once per bouquet.
  * Local +Y points from the stem base toward the flower center. Petal normals
  * face out of the cup / above the ruffles; the renderer can shade their backs.
+ * Per-vertex owners identify blooms so their projected contours stay distinct.
  */
 export function buildFlowerMesh(heads) {
   let vertexCount = 0;
@@ -46,6 +47,7 @@ export function buildFlowerMesh(heads) {
   const normals = new Float32Array(vertexCount * 3);
   const tones = new Float32Array(vertexCount);
   const materials = new Uint8Array(vertexCount);
+  const owners = new Uint8Array(vertexCount);
   const indices = new Uint32Array(triangleCount * 3);
   let vertex = 0;
   let index = 0;
@@ -144,6 +146,7 @@ export function buildFlowerMesh(heads) {
       normals[offset + 2] = uz * nx + az * ny + vz * nz;
       tones[vertex] = bias;
       materials[vertex] = material;
+      owners[vertex] = headIndex;
       vertex++;
     }
 
@@ -256,5 +259,5 @@ export function buildFlowerMesh(heads) {
     }
   }
 
-  return { positions, normals, tones, materials, indices };
+  return { positions, normals, tones, materials, indices, owners };
 }

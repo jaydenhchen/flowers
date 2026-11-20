@@ -19,11 +19,12 @@ const GLYPHS = ' .,:;-=+*#%@';
 const SURFACE_SHADE = '.,:;-=+*#%@';
 const PETAL_SHADE = '+*#%@';
 const SHADES = 64;
-const FLOWER_BOUND = 1.3;
+const FLOWER_BOUND = 1.20;
 const FLOWER_GAP = 0.012;
 const FLOWER_COUNT = 14;
+const BLOOM_RADIUS = 0.48;
 const FLOWER_DROP = 0.08;
-const STEM_BASE_Y = -0.30;
+const STEM_BASE_Y = -0.12;
 const MATERIALS = [
   [255, 188, 215], // pastel pink
   [255, 236, 164], // butter yellow
@@ -61,7 +62,7 @@ function buildScene() {
     const dx = Math.cos(elevation) * Math.cos(azimuth);
     const dy = Math.sin(elevation);
     const dz = Math.cos(elevation) * Math.sin(azimuth);
-    const distance = 0.64 * (0.92 + random() * 0.13);
+    const distance = 0.52 * (0.92 + random() * 0.13);
     const x = i === 0 ? 0.14 : dx * distance;
     const y = 0.12 + dy * distance + (i === 0 ? 0.02 : 0);
     const z = i === 0 ? 0.10 : dz * distance;
@@ -71,9 +72,9 @@ function buildScene() {
     heads.push({ x, y, z, tulip: isTulip, material: i % 3, radius, seed: flowerSeed });
   }
 
-  // Resolve crowded pairs locally instead of spreading the entire bouquet
-  // around its single closest pair. All petals fit inside 1.3-radius spheres.
-  for (let pass = 0; pass < 32; pass++) {
+  // Keep the existing flower sizes, but gather their centers over the original
+  // sleeve opening. Conservative petal bounds preserve a real gap.
+  for (let pass = 0; pass < 96; pass++) {
     let moved = false;
     for (let i = 0; i < heads.length; i++) {
       for (let j = i + 1; j < heads.length; j++) {
@@ -95,9 +96,16 @@ function buildScene() {
         moved = true;
       }
     }
-    // Keep the lower envelope level before seating the blooms in the sleeve.
+    // Raise inner blooms into a dome so outward-fanning stalks pass underneath.
     for (const head of heads) {
-      const minimumY = 0.34 + FLOWER_BOUND * head.radius;
+      const radius = Math.hypot(head.x, head.z);
+      if (radius > BLOOM_RADIUS) {
+        head.x *= BLOOM_RADIUS / radius;
+        head.z *= BLOOM_RADIUS / radius;
+        moved = true;
+      }
+      const dome = 0.30 * Math.max(0, 1 - radius / BLOOM_RADIUS);
+      const minimumY = 0.34 + FLOWER_DROP + FLOWER_BOUND * head.radius + dome;
       if (head.y >= minimumY) continue;
       head.y = minimumY;
       moved = true;
@@ -221,23 +229,10 @@ function buildScene() {
   }
 
   // Dense folded wrapping, not the previous wireframe surface.
-  const y0 = -0.45;
+  const y0 = -0.20;
   const y1 = 0.30;
   const r0 = 0.06;
-  let r1 = r0;
-  function encloseInPaper(x, y, z) {
-    const radius = Math.hypot(x, z);
-    // All blooms fit within the mouth's outline. Below its folded edge, leave
-    // clearance from the actual cone wall, including the highest paper fold.
-    r1 = Math.max(r1, radius + 0.04);
-    if (y > y1 + 0.03) return;
-    const t = (y - y0 - 0.03) / (y1 - y0);
-    r1 = Math.max(r1, r0 + (radius + 0.02 - r0) / t);
-  }
-  for (let i = 0; i < flowers.positions.length; i += 3) {
-    encloseInPaper(flowers.positions[i], flowers.positions[i + 1], flowers.positions[i + 2]);
-  }
-  for (let i = 0; i < points.length; i += 8) encloseInPaper(points[i], points[i + 1], points[i + 2]);
+  const r1 = 0.36;
   const slope = (r1 - r0) / (y1 - y0);
   for (let i = 0; i < 64; i++) {
     const t = i / 63;
@@ -304,7 +299,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
   if (!context) throw new Error('The bouquet requires a 2D canvas.');
   const { points, babies, flowers } = buildScene();
   const { positions: flowerPositions, normals: flowerNormals, tones: flowerTones,
-    materials: flowerMaterials, indices: flowerIndices } = flowers;
+    materials: flowerMaterials, indices: flowerIndices, owners: flowerOwners } = flowers;
   const transformedFlowers = new Float32Array(flowerMaterials.length * 4);
   let frameHalfWidth = 0;
   let frameTop = -Infinity;
@@ -340,6 +335,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
   }));
   const surfaceGlyphs = Uint8Array.from(SURFACE_SHADE, glyph);
   const petalGlyphs = Uint8Array.from(PETAL_SHADE, glyph);
+  const edgeGlyph = glyph('+');
   let width = 0;
   let height = 0;
   let columns = 0;
@@ -358,6 +354,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
   let depths = new Float32Array(0);
   let characters = new Uint8Array(0);
   let colors = new Uint16Array(0);
+  let bloomOwners = new Uint8Array(0);
   let angle = -0.15;
   let elapsed = 0;
   let lastTime = 0;
@@ -395,6 +392,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
     depths[index] = z;
     characters[index] = char;
     colors[index] = color;
+    bloomOwners[index] = 0;
   }
 
   function schedule() {
@@ -436,6 +434,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
     depths = new Float32Array(columns * rows);
     characters = new Uint8Array(columns * rows);
     colors = new Uint16Array(columns * rows);
+    bloomOwners = new Uint8Array(columns * rows);
     schedule();
   }
 
@@ -486,6 +485,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
       const b1 = (x0 - x2) * inverseArea;
       const c1 = (x2 * y0 - x0 * y2) * inverseArea;
       const material = flowerMaterials[flowerIndices[triangle]];
+      const owner = flowerOwners[flowerIndices[triangle]] + 1;
       for (let row = minY; row <= maxY; row++) {
         for (let col = minX; col <= maxX; col++) {
           const w0 = a0 * (col + 0.5) + b0 * (row + 0.5) + c0;
@@ -503,6 +503,28 @@ export function createBouquet(canvas, { paused = false } = {}) {
           depths[cell] = depth;
           characters[cell] = petalGlyphs[Math.floor(brightness * petalGlyphs.length)];
           colors[cell] = material * SHADES + Math.floor(brightness * SHADES);
+          bloomOwners[cell] = owner;
+        }
+      }
+    }
+  }
+
+  function shadeBloomEdges() {
+    // Separate foreground bloom contours where different heads meet in
+    // projection, without changing their geometry or internal petal shading.
+    for (let row = 1; row < rows - 1; row++) {
+      for (let col = 1; col < columns - 1; col++) {
+        const cell = row * columns + col;
+        const owner = bloomOwners[cell];
+        if (!owner) continue;
+        const depth = depths[cell] - 0.01;
+        if ((bloomOwners[cell - 1] && bloomOwners[cell - 1] !== owner && depth > depths[cell - 1])
+          || (bloomOwners[cell + 1] && bloomOwners[cell + 1] !== owner && depth > depths[cell + 1])
+          || (bloomOwners[cell - columns] && bloomOwners[cell - columns] !== owner && depth > depths[cell - columns])
+          || (bloomOwners[cell + columns] && bloomOwners[cell + columns] !== owner && depth > depths[cell + columns])) {
+          const material = Math.floor(colors[cell] / SHADES) * SHADES;
+          colors[cell] = material + Math.min(colors[cell] - material, 16);
+          characters[cell] = edgeGlyph;
         }
       }
     }
@@ -525,6 +547,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
     sa = Math.sin(angle);
     depths.fill(-Infinity);
     characters.fill(0);
+    bloomOwners.fill(0);
     ambience.draw(elapsed, columns, rows, plot);
 
     for (let i = 0; i < points.length; i += 8) {
@@ -548,6 +571,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
       const bright = Math.sin(elapsed * 2 + baby.phase) > 0.6;
       plot(px, py, pz + 0.02, glyph(bright ? '*' : '.'), 6 * SHADES + (bright ? SHADES - 1 : 40));
     }
+    shadeBloomEdges();
 
     context.fillStyle = '#000';
     context.fillRect(0, 0, width, height);
