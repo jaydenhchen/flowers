@@ -9,10 +9,13 @@ const TILT = 0.30;
 const CAM_DIST = 4;
 const SPIN_SPEED = 0.6;
 const FPS = 24;
-const MESSAGE = 'for Samantha, with love';
-const GLYPHS = ' .:-=+*#%@';
-const SURFACE_SHADE = '.:-=+*%@';
-const PETAL_SHADE = '+*#%';
+const GLYPHS = ' .,:;-=+*#%@';
+const SURFACE_SHADE = '.,:;-=+*#%@';
+const PETAL_SHADE = '-=+*#%@';
+const SHADES = 64;
+const RELIEF_SIZE = 128;
+const RELIEF_EXTENT = 1.05;
+const RELIEF_STRIDE = 5;
 const MATERIALS = [
   [255, 188, 215], // pastel pink
   [255, 236, 164], // butter yellow
@@ -26,6 +29,80 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const ct = Math.cos(TILT);
 const st = Math.sin(TILT);
 const glyph = (char) => GLYPHS.indexOf(char);
+const gaussian = (n) => Math.exp(-n * n);
+
+function tulipWidth(v) {
+  return 0.87 * Math.sin(Math.PI * 0.5 * Math.min(1, v * 1.5 + 0.05));
+}
+
+function petalHeight(x, y, tulip, seed) {
+  if (tulip) {
+    const v = clamp((1 - y) / 2, 0, 1);
+    const xn = x / Math.max(0.04, tulipWidth(v));
+    const leftSeam = gaussian((xn + 0.34) / 0.065);
+    const rightSeam = gaussian((xn - 0.34) / 0.065);
+    const rim = 0.72 + 0.28 * Math.cos(1.5 * Math.PI * xn) ** 2;
+    return 0.24 * Math.sqrt(Math.max(0, 1 - xn * xn)) * (0.65 + 0.35 * Math.sin(v * Math.PI * 0.8))
+      - 0.032 * (leftSeam + rightSeam) * Math.min(1, v * 3)
+      + 0.025 * gaussian((v - rim) / 0.065)
+      + 0.003 * Math.sin(xn * 48 + seed) * Math.sin(v * Math.PI);
+  }
+  const r = Math.hypot(x, y);
+  const a = Math.atan2(y, x);
+  const folds = r * 24 + 2.2 * Math.sin(a * 6 + seed) + 0.8 * Math.sin(a * 11 - r * 7);
+  return 0.20 * Math.sqrt(Math.max(0, 1 - r * r))
+    + 0.040 * (0.5 + 0.5 * r) * Math.sin(folds)
+    + 0.018 * r * Math.sin(a * 17 - r * 11 + seed)
+    + 0.025 * gaussian((r - 0.83) / 0.13) * Math.max(0, Math.sin(folds + 1.1));
+}
+
+// Cache petal relief, normals, and crease occlusion once, not trigonometry per frame.
+function buildPetalRelief(tulip, seed) {
+  const surface = new Float32Array(RELIEF_SIZE * RELIEF_SIZE * RELIEF_STRIDE);
+  const step = RELIEF_EXTENT * 2 / (RELIEF_SIZE - 1);
+  for (let row = 0; row < RELIEF_SIZE; row++) {
+    const y = row * step - RELIEF_EXTENT;
+    for (let col = 0; col < RELIEF_SIZE; col++) {
+      const x = col * step - RELIEF_EXTENT;
+      const index = (row * RELIEF_SIZE + col) * RELIEF_STRIDE;
+      let occlusion;
+      if (tulip) {
+        const v = (1 - y) / 2;
+        const halfWidth = tulipWidth(v);
+        const xn = x / Math.max(0.04, halfWidth);
+        if (v < 0 || v > 1 || Math.abs(x) > halfWidth
+          || v > 0.72 + 0.28 * Math.cos(1.5 * Math.PI * xn) ** 2) {
+          surface[index + 3] = -1;
+          continue;
+        }
+        occlusion = 0.17 * (gaussian((xn + 0.34) / 0.085)
+          + gaussian((xn - 0.34) / 0.085)) * Math.min(1, v * 3)
+          + 0.04 * (1 - v);
+      } else {
+        const r = Math.hypot(x, y);
+        const a = Math.atan2(y, x);
+        const edge = 0.88 + 0.09 * Math.sin(a * 9) + 0.055 * Math.sin(a * 17 + seed);
+        if (r > edge) {
+          surface[index + 3] = -1;
+          continue;
+        }
+        const folds = r * 24 + 2.2 * Math.sin(a * 6 + seed) + 0.8 * Math.sin(a * 11 - r * 7);
+        occlusion = 0.20 * Math.max(0, -Math.sin(folds)) ** 4 + 0.07 * r * r;
+      }
+      const height = petalHeight(x, y, tulip, seed);
+      const nx = -(petalHeight(x + step, y, tulip, seed) - petalHeight(x - step, y, tulip, seed)) / (2 * step);
+      const ny = -(petalHeight(x, y + step, tulip, seed) - petalHeight(x, y - step, tulip, seed))
+        / (2 * step * (tulip ? 1.18 : 1));
+      const inverseLength = 1 / Math.hypot(nx, ny, 1);
+      surface[index] = nx * inverseLength;
+      surface[index + 1] = ny * inverseLength;
+      surface[index + 2] = inverseLength;
+      surface[index + 3] = height;
+      surface[index + 4] = occlusion;
+    }
+  }
+  return surface;
+}
 
 function buildScene() {
   let seed = 21;
@@ -55,8 +132,10 @@ function buildScene() {
     const y = 0.12 + dy * distance;
     const z = dz * distance;
     const isTulip = tulips.has(i);
+    const flowerSeed = random() * TAU;
     heads.push({ x, y, z, tulip: isTulip, material: i % 3,
-      radius: isTulip ? 0.175 : 0.155 + random() * 0.022, seed: random() * TAU });
+      radius: isTulip ? 0.175 : 0.155 + random() * 0.022,
+      surface: buildPetalRelief(isTulip, flowerSeed) });
     for (let j = 0; j < 90; j++) {
       const t = j / 89;
       point(x * (1 - t), (y - 0.03) * (1 - t) - 0.12 * t, z * (1 - t),
@@ -154,9 +233,14 @@ export function createBouquet(canvas, { paused = false } = {}) {
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('The bouquet requires a 2D canvas.');
   const { points, heads, babies } = buildScene();
-  const palette = MATERIALS.flatMap(rgb => Array.from({ length: 16 }, (_, i) => {
-    const light = 0.34 + i / 15 * 0.66;
-    return `rgb(${Math.round(rgb[0] * light)},${Math.round(rgb[1] * light)},${Math.round(rgb[2] * light)})`;
+  const palette = MATERIALS.flatMap(rgb => Array.from({ length: SHADES }, (_, i) => {
+    const value = i / (SHADES - 1);
+    const light = 0.20 + Math.pow(value, 0.65) * 0.80;
+    const highlight = Math.max(0, (value - 0.85) / 0.15) * 0.30;
+    const r = Math.round(rgb[0] * light * (1 - highlight) + 255 * highlight);
+    const g = Math.round(rgb[1] * light * (1 - highlight) + 250 * highlight);
+    const b = Math.round(rgb[2] * light * (1 - highlight) + 255 * highlight);
+    return `rgb(${r},${g},${b})`;
   }));
   const surfaceGlyphs = Uint8Array.from(SURFACE_SHADE, glyph);
   const petalGlyphs = Uint8Array.from(PETAL_SHADE, glyph);
@@ -172,7 +256,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
   let centerY = 0;
   let depths = new Float32Array(0);
   let characters = new Uint8Array(0);
-  let colors = new Uint8Array(0);
+  let colors = new Uint16Array(0);
   let angle = -0.15;
   let elapsed = 0;
   let lastTime = 0;
@@ -225,8 +309,8 @@ export function createBouquet(canvas, { paused = false } = {}) {
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const fontSize = width < 600 || height < 500 ? 8 : 13;
-    context.font = `400 ${fontSize}px "SFMono-Regular", Consolas, "Liberation Mono", monospace`;
+    const fontSize = width < 600 || height < 500 ? 6 : 9;
+    context.font = `500 ${fontSize}px "SFMono-Regular", Consolas, "Liberation Mono", monospace`;
     cellWidth = context.measureText('M').width;
     cellHeight = fontSize * 1.16;
     context.textBaseline = 'middle';
@@ -237,10 +321,10 @@ export function createBouquet(canvas, { paused = false } = {}) {
     scaleX = scale * cellHeight / cellWidth;
     scaleY = scale;
     centerX = columns / 2;
-    centerY = (rows - 3) / 2;
+    centerY = rows / 2;
     depths = new Float32Array(columns * rows);
     characters = new Uint8Array(columns * rows);
-    colors = new Uint8Array(columns * rows);
+    colors = new Uint16Array(columns * rows);
     schedule();
   }
 
@@ -273,7 +357,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
       const ambient = points[i + 6] === 4 ? 0.48 : 0.31;
       const b = clamp(ambient + (1 - ambient) * Math.max(0, dot) + points[i + 7], 0, 0.999);
       plot(px, py, pz, surfaceGlyphs[Math.floor(b * surfaceGlyphs.length)],
-        points[i + 6] * 16 + Math.floor(b * 16));
+        points[i + 6] * SHADES + Math.floor(b * SHADES));
     }
 
     // Camera-facing head stamps are the reference's essential readability trick.
@@ -285,39 +369,34 @@ export function createBouquet(canvas, { paused = false } = {}) {
       const z = pz;
       const rx = head.radius * pf * scaleX;
       const ry = head.radius * pf * scaleY * (head.tulip ? 1.18 : 1);
-      const dim = -0.20 * (1 - clamp((z + 0.6) / 1.2, 0, 1));
-      const rotation = head.seed + angle * 0.40;
-      for (let row = Math.floor(fy - ry) - 1; row <= Math.ceil(fy + ry); row++) {
+      const dim = -0.12 * (1 - clamp((z + 0.6) / 1.2, 0, 1));
+      const rotation = head.tulip ? 0 : angle * 0.40;
+      const cr = Math.cos(rotation);
+      const sr = Math.sin(rotation);
+      const textureScale = (RELIEF_SIZE - 1) / (RELIEF_EXTENT * 2);
+      const surface = head.surface;
+      for (let row = Math.floor(fy - ry * RELIEF_EXTENT) - 1; row <= Math.ceil(fy + ry * RELIEF_EXTENT); row++) {
         const dy = (row + 0.5 - fy) / ry;
-        for (let col = Math.floor(fx - rx) - 1; col <= Math.ceil(fx + rx); col++) {
+        for (let col = Math.floor(fx - rx * RELIEF_EXTENT) - 1; col <= Math.ceil(fx + rx * RELIEF_EXTENT); col++) {
           const dx = (col + 0.5 - fx) / rx;
-          let b;
-          let depth = z;
-          if (head.tulip) {
-            const v = (1 - dy) / 2;
-            if (v < 0 || v > 1) continue;
-            const halfWidth = 0.87 * Math.sin(Math.PI * 0.5 * Math.min(1, v * 1.5 + 0.05));
-            if (halfWidth <= 0 || Math.abs(dx) > halfWidth) continue;
-            const xn = dx / halfWidth;
-            if (v > 0.72 + 0.28 * Math.cos(1.5 * Math.PI * xn) ** 2) continue;
-            const seam = Math.abs(Math.abs(xn) - 0.33) < 0.10 && v > 0.3 ? -0.20 : 0;
-            b = 0.77 - 0.20 * xn - 0.10 * dy + seam + dim;
-            depth += 0.03;
-          } else {
-            const s = Math.hypot(dx, dy);
-            const ph = Math.atan2(dy, dx) + rotation;
-            const edge = 0.88 + 0.09 * Math.sin(ph * 9) + 0.055 * Math.sin(ph * 17 + head.seed);
-            if (s > edge) continue;
-            // Layered, irregular folds, without a daisy's exposed center or radial gaps.
-            const fold = Math.sin(s * 31 + 2.5 * Math.sin(ph * 7) + head.seed);
-            const ruffle = Math.sin(ph * 17 - s * 19 + 1.3 * Math.cos(ph * 5));
-            b = 0.79 - 0.14 * dx - 0.16 * dy + 0.12 * fold + 0.085 * ruffle + dim;
-            if (s > edge - 0.13) b -= 0.13;
-            depth += 0.045 * (1 - s);
-          }
-          b = clamp(b, 0, 0.999);
-          plot(col, row, depth, petalGlyphs[Math.floor(b * petalGlyphs.length)],
-            head.material * 16 + Math.floor(b * 16));
+          const tx = Math.round((dx * cr - dy * sr + RELIEF_EXTENT) * textureScale);
+          const ty = Math.round((dx * sr + dy * cr + RELIEF_EXTENT) * textureScale);
+          if (tx < 0 || tx >= RELIEF_SIZE || ty < 0 || ty >= RELIEF_SIZE) continue;
+          const index = (ty * RELIEF_SIZE + tx) * RELIEF_STRIDE;
+          const height = surface[index + 3];
+          if (height === -1) continue;
+          const nx = surface[index] * cr + surface[index + 1] * sr;
+          const ny = -surface[index] * sr + surface[index + 1] * cr;
+          const nz = surface[index + 2];
+          const diffuse = Math.max(0, nx * -0.45 + ny * -0.60 + nz * 0.66);
+          const rim = Math.max(0, nx * 0.70 + ny * 0.15 + nz * 0.65);
+          const highlight = Math.max(0, nx * -0.24 + ny * -0.32 + nz * 0.916);
+          const occlusion = surface[index + 4];
+          const b = clamp((0.18 + 0.72 * diffuse + 0.14 * rim ** 3) * (1 - occlusion)
+            + 0.14 * highlight ** 18 + dim, 0, 0.999);
+          plot(col, row, z + head.radius * (0.08 + height),
+            petalGlyphs[Math.floor(b * petalGlyphs.length)],
+            head.material * SHADES + Math.floor(b * SHADES));
         }
       }
     }
@@ -325,7 +404,7 @@ export function createBouquet(canvas, { paused = false } = {}) {
     for (const baby of babies) {
       project(baby.x, baby.y, baby.z);
       const bright = Math.sin(elapsed * 2 + baby.phase) > 0.6;
-      plot(px, py, pz + 0.02, glyph(bright ? '*' : '.'), 6 * 16 + (bright ? 15 : 9));
+      plot(px, py, pz + 0.02, glyph(bright ? '*' : '.'), 6 * SHADES + (bright ? SHADES - 1 : 40));
     }
 
     context.fillStyle = '#000';
@@ -345,9 +424,6 @@ export function createBouquet(canvas, { paused = false } = {}) {
           offsetY + (row + 0.5) * cellHeight);
       }
     }
-    const messageRow = Math.min(rows - 2, Math.ceil(centerY + scaleY * 0.85) + 1);
-    context.fillStyle = '#eeb2cd';
-    context.fillText(MESSAGE, width / 2, offsetY + (messageRow + 0.5) * cellHeight);
     if (!isPaused && pointer === null) schedule();
   }
 

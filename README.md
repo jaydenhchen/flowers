@@ -2,7 +2,7 @@
 
 **Live:** https://jaydenhchen.github.io/flowers/
 
-A black screen with a centered, spinning ASCII bouquet. No headings, cards, navigation, visible controls, or decorative website layout. The only visible text is `for Samantha, with love` beneath the flowers.
+A black screen with a centered, spinning ASCII bouquet. No caption, headings, cards, navigation, visible controls, or decorative website layout.
 
 Six ruffled carnations and four cupped tulips in pastel pink, butter yellow, and baby blue, with foliage, baby's breath, folded paper, and a ribbon.
 
@@ -12,7 +12,9 @@ Adapted from Alish Sharma's [Ascii-Flower-Bouquet-](https://github.com/alishshar
 
 The browser port retains the reference's golden-angle arrangement, rotating 3D point cloud, perspective projection, depth buffer, lighting, and camera-facing flower heads. The head silhouettes and textures are customized for carnations and tulips; the palette is customized for Samantha.
 
-Flower heads remain readable as their positions rotate. Carnations use filled, scalloped shapes with layered irregular folds, not daisy centers or wireframe petals. Tulips use filled cup silhouettes with a three-point rim and shaded petal seams. Canvas output is a grid of actual monospace ASCII glyphs.
+Flower heads remain readable as their positions rotate. Carnations use scalloped silhouettes with raised, irregular layers; tulips use curved cup surfaces with a three-point rim, recessed seams, and fine petal veins. Each bloom has a cached 128×128 relief map containing surface normals, height, and crease occlusion. Directional key lighting, rim lighting, and specular highlights shade each character; the depth buffer uses the petals' relief rather than a flat flower disc.
+
+The terminal grid uses 9px glyphs on desktop and 6px on narrow or short screens. Each material has 64 tone-mapped shades, with pale highlights that preserve the pink, butter yellow, and baby blue palette. Canvas output consists only of individual monospace ASCII characters.
 
 ## Run locally
 
@@ -35,12 +37,12 @@ There are no on-screen controls. A screen-reader description provides the bouque
 
 ## Customize
 
-- `bouquet.js`: `MESSAGE`, color palettes, flower arrangement, head drawing, and `SPIN_SPEED`.
+- `bouquet.js`: color palettes, petal relief, flower arrangement, glyph size, and `SPIN_SPEED`.
 - `styles.css`: full-viewport black terminal surface.
 - `app.js`: keyboard pause and reduced-motion preference.
 - `index.html`: page metadata and accessible description.
 
-Geometry is built once. Typed-array character, color, and depth buffers are reused. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
+Geometry and petal relief maps are built once. Typed-array character, 16-bit color, and depth buffers are reused. Surface normals are cached rather than recomputed every frame. Rendering is capped at 24 frames per second, suspended in hidden tabs, and only requested as needed while paused.
 
 ## Deploy
 
