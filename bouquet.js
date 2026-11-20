@@ -22,12 +22,14 @@ const SHADES = 64;
 const FLOWER_BOUND = 1.3;
 const FLOWER_GAP = 0.012;
 const FLOWER_COUNT = 14;
+const FLOWER_DROP = 0.08;
+const STEM_BASE_Y = -0.30;
 const MATERIALS = [
   [255, 188, 215], // pastel pink
   [255, 236, 164], // butter yellow
   [174, 218, 255], // baby blue
   [115, 190, 110], // foliage
-  [227, 221, 181], // paper
+  [211, 176, 126], // kraft paper
   [239, 154, 190], // ribbon
   [226, 236, 229], // baby's breath
 ];
@@ -93,7 +95,7 @@ function buildScene() {
         moved = true;
       }
     }
-    // Keep petals above the paper's highest folded rim (Y = 0.33).
+    // Keep the lower envelope level before seating the blooms in the sleeve.
     for (const head of heads) {
       const minimumY = 0.34 + FLOWER_BOUND * head.radius;
       if (head.y >= minimumY) continue;
@@ -114,10 +116,10 @@ function buildScene() {
   }
   for (const head of heads) {
     head.x *= spread;
-    head.y = 0.12 + (head.y - 0.12) * spread;
+    head.y = 0.12 + (head.y - 0.12) * spread - FLOWER_DROP;
     head.z *= spread;
     const { x, y, z, radius, tulip: isTulip } = head;
-    const [ax, ay, az] = normal(x, y + 0.12, z);
+    const [ax, ay, az] = normal(x, y - STEM_BASE_Y, z);
     const attachment = radius * (isTulip ? 1.18 : 0.55);
     const baseX = x - ax * attachment;
     const baseY = y - ay * attachment;
@@ -129,18 +131,46 @@ function buildScene() {
     const vx = ay * uz - az * uy;
     const vy = az * ux - ax * uz;
     const vz = ax * uy - ay * ux;
-    // Every flower has a continuous tube ending at its actual three-dimensional base.
+    // Cubic stalks rise from the bundle, bow gently, and meet each bloom along
+    // its own axis. The last control point keeps the petal/calyx joint smooth.
+    const length = Math.hypot(baseX, baseY - STEM_BASE_Y, baseZ);
+    const radial = Math.hypot(x, z);
+    const bend = 0.065 * Math.sin(head.seed * 1.7);
+    const controlX = baseX * 0.10 - z / radial * bend;
+    const controlY = STEM_BASE_Y + (baseY - STEM_BASE_Y) * 0.45;
+    const controlZ = baseZ * 0.10 + x / radial * bend;
+    const approachX = baseX - ax * length * 0.30;
+    const approachY = baseY - ay * length * 0.30;
+    const approachZ = baseZ - az * length * 0.30;
     for (let j = 0; j < 100; j++) {
       const t = j / 99;
+      const u = 1 - t;
+      const cx = 3 * u * u * t * controlX + 3 * u * t * t * approachX + t * t * t * baseX;
+      const cy = STEM_BASE_Y * u * u * u + 3 * u * u * t * controlY
+        + 3 * u * t * t * approachY + t * t * t * baseY;
+      const cz = 3 * u * u * t * controlZ + 3 * u * t * t * approachZ + t * t * t * baseZ;
+      let tx = u * u * controlX + 2 * u * t * (approachX - controlX) + t * t * (baseX - approachX);
+      let ty = u * u * (controlY - STEM_BASE_Y) + 2 * u * t * (approachY - controlY)
+        + t * t * (baseY - approachY);
+      let tz = u * u * controlZ + 2 * u * t * (approachZ - controlZ) + t * t * (baseZ - approachZ);
+      const inverseLength = 1 / Math.hypot(tx, ty, tz);
+      tx *= inverseLength;
+      ty *= inverseLength;
+      tz *= inverseLength;
+      const crossLength = Math.hypot(tx, ty);
+      const localUX = ty / crossLength;
+      const localUY = -tx / crossLength;
+      const localVX = -tz * localUY;
+      const localVY = tz * localUX;
+      const localVZ = tx * localUY - ty * localUX;
       for (let k = 0; k < 8; k++) {
         const a = k / 8 * TAU;
         const c = Math.cos(a);
         const s = Math.sin(a);
-        const nx = ux * c + vx * s;
-        const ny = uy * c + vy * s;
-        const nz = uz * c + vz * s;
-        point(baseX * t + nx * 0.006, -0.12 + (baseY + 0.12) * t + ny * 0.006,
-          baseZ * t + nz * 0.006, nx, ny, nz, 3, -0.04);
+        const nx = localUX * c + localVX * s;
+        const ny = localUY * c + localVY * s;
+        const nz = localVZ * s;
+        point(cx + nx * 0.006, cy + ny * 0.006, cz + nz * 0.006, nx, ny, nz, 3, -0.04);
       }
     }
     if (isTulip) {
@@ -167,6 +197,8 @@ function buildScene() {
     }
   }
 
+  const flowers = buildFlowerMesh(heads);
+
   // Broad, curled leaves around the neck, with a darker central rib.
   for (let i = 0; i < 8; i++) {
     const angle = (i + 0.4) / 8 * TAU;
@@ -189,10 +221,23 @@ function buildScene() {
   }
 
   // Dense folded wrapping, not the previous wireframe surface.
-  const y0 = -0.20;
+  const y0 = -0.45;
   const y1 = 0.30;
   const r0 = 0.06;
-  const r1 = 0.36;
+  let r1 = r0;
+  function encloseInPaper(x, y, z) {
+    const radius = Math.hypot(x, z);
+    // All blooms fit within the mouth's outline. Below its folded edge, leave
+    // clearance from the actual cone wall, including the highest paper fold.
+    r1 = Math.max(r1, radius + 0.04);
+    if (y > y1 + 0.03) return;
+    const t = (y - y0 - 0.03) / (y1 - y0);
+    r1 = Math.max(r1, r0 + (radius + 0.02 - r0) / t);
+  }
+  for (let i = 0; i < flowers.positions.length; i += 3) {
+    encloseInPaper(flowers.positions[i], flowers.positions[i + 1], flowers.positions[i + 2]);
+  }
+  for (let i = 0; i < points.length; i += 8) encloseInPaper(points[i], points[i + 1], points[i + 2]);
   const slope = (r1 - r0) / (y1 - y0);
   for (let i = 0; i < 64; i++) {
     const t = i / 63;
@@ -213,12 +258,13 @@ function buildScene() {
     const angle = i / 7 * TAU;
     for (let j = 0; j < 60; j++) {
       const t = j / 59;
-      point(0.025 * Math.cos(angle) * (1 + 1.2 * t), -0.20 - 0.30 * t,
-        0.025 * Math.sin(angle) * (1 + 1.2 * t), Math.cos(angle), 0, Math.sin(angle), 3, -0.08);
+      const bend = 0.012 * Math.sin(Math.PI * t) * Math.sin(angle * 1.7);
+      point((0.025 * (1 + 1.2 * t) + bend) * Math.cos(angle), y0 - 0.30 * t,
+        (0.025 * (1 + 1.2 * t) - bend) * Math.sin(angle), Math.cos(angle), 0, Math.sin(angle), 3, -0.08);
     }
   }
 
-  const by = -0.12;
+  const by = STEM_BASE_Y;
   const br = r0 + slope * (by - y0) + 0.01;
   for (let j = 0; j < 120; j++) {
     const angle = j / 120 * TAU;
@@ -250,15 +296,15 @@ function buildScene() {
       y: 0.12 + radius * Math.sin(elevation), z: radius * Math.sin(angle) * Math.cos(elevation),
       phase: random() * TAU });
   }
-  return { points: new Float32Array(points), heads, babies };
+  return { points: new Float32Array(points), heads, babies, flowers };
 }
 
 export function createBouquet(canvas, { paused = false } = {}) {
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('The bouquet requires a 2D canvas.');
-  const { points, heads, babies } = buildScene();
+  const { points, babies, flowers } = buildScene();
   const { positions: flowerPositions, normals: flowerNormals, tones: flowerTones,
-    materials: flowerMaterials, indices: flowerIndices } = buildFlowerMesh(heads);
+    materials: flowerMaterials, indices: flowerIndices } = flowers;
   const transformedFlowers = new Float32Array(flowerMaterials.length * 4);
   let frameHalfWidth = 0;
   let frameTop = -Infinity;

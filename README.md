@@ -2,9 +2,9 @@
 
 **Live:** https://jaydenhchen.github.io/flowers/
 
-A black screen with a centered, spinning ASCII bouquet and **I love you Samantha!** beneath it. Tiny shimmering character-art hearts and twinkling ASCII stars surround the flowers. No headings, cards, navigation, visible controls, or decorative website layout.
+A black screen with a centered, spinning ASCII bouquet and **I love you Samantha!** beneath it. Small shimmering character-art hearts and twinkling ASCII stars surround the flowers. No headings, cards, navigation, visible controls, or decorative website layout.
 
-Eight ruffled carnations and six cupped tulips form a full, closely clustered dome in pastel pink, butter yellow, and baby blue, with foliage, baby's breath, folded paper, and a ribbon.
+Eight ruffled carnations and six cupped tulips form a full, closely clustered dome in pastel pink, butter yellow, and baby blue, with foliage, baby's breath, a warm kraft-paper sleeve, and a ribbon.
 
 ## Reference and license
 
@@ -14,13 +14,15 @@ The browser port retains the reference's golden-angle arrangement, perspective p
 
 Tulips have six long oval petals in two staggered whorls, a tapered foot, a fuller lower-middle belly, and rounded tips that close toward a modest scalloped opening. Their cups are about 60% of the carnations' width. A lifted tulip lighting bias matches the carnations' pastel brightness while retaining darker seams and interiors. Carnations have five layers of curled, ruffled petals. Cached world-space vertices and surface normals rotate together; perspective-correct triangle rasterization and the shared depth buffer handle shading and occlusion.
 
-Each bloom's local axis runs from its stem attachment toward its center. Tulips fan outward on those axes, including an off-center central tulip that leans and moves as the bouquet turns. Continuous tubular stems and small green calyces meet the petal bases in the same 3D coordinate system.
+Each bloom's local axis runs from its stem attachment toward its center. Tulips fan outward on those axes, including an off-center central tulip that leans and moves as the bouquet turns. Cubic Bézier stalks rise from the tied bundle with gentle inward and sideways bows. Tangent-aligned tube sections follow each curve, and the final tangent meets the calyx and petal base smoothly. The short exposed stem ends also bend slightly below the paper.
 
-Crowded flower pairs are separated locally rather than expanding the entire dome around its single closest pair. A final uniform correction guarantees a small positive gap between every pair of enclosing petal spheres. The spheres stay above the paper's folded rim, and shared rigid rotation preserves all clearances. Flowers can overlap in perspective without their meshes intersecting. Stems and calyces are built after spacing, so the attachments follow the final positions. Exact full-turn projection bounds frame the bouquet and dedication without clipping at different screen sizes.
+Crowded flower pairs are separated locally rather than expanding the entire dome around its single closest pair. A final uniform correction guarantees a small positive gap between every pair of enclosing petal spheres. Shared rigid rotation preserves those clearances; flowers can overlap in perspective without their meshes intersecting.
+
+The blooms sit lower inside a deeper paper sleeve. Its opening is fitted to the actual petal, stem, and leaf vertices rather than a fixed radius, keeping the flowers within the mouth's outline throughout rotation. Below the folded edge, the fitted cone leaves clearance so petals and foliage do not poke through its sides. Exact full-turn projection bounds keep the complete bouquet and dedication inside the viewport.
 
 The terminal grid uses 9px glyphs on desktop and 6px on narrow or short screens. Each material has 64 tone-mapped shades, with pale highlights that preserve the pink, butter yellow, and baby blue palette. Canvas output consists only of individual monospace ASCII characters.
 
-Hearts use tiny, fixed 5-column, 3-row ASCII faces with two lobes and a softly shaded point. They no longer spin: a gentle highlight shimmers across each face while it drifts upward with a slight sway. Background stars pulse softly between dots, crosses, and asterisks. Both effects render behind the bouquet and share its animation clock, so pause and reduced motion stop all automatic movement, not just the bouquet's spin.
+Small, fixed 9-column, 5-row ASCII hearts have two bold lobes, a clear central notch, and a tapered point. Dense fill makes their silhouette readable at terminal size. They do not spin: a gentle highlight shimmers across each face while it drifts upward with a slight sway. Background stars pulse softly between dots, crosses, and asterisks. Both effects render behind the bouquet and share its animation clock, so pause and reduced motion stop all automatic movement, not just the bouquet's spin.
 
 ## Run locally
 
@@ -45,7 +47,7 @@ There are no on-screen controls. A screen-reader description provides the bouque
 
 - `bouquet.js`: color palettes, flower arrangement, lighting, glyph size, `SPIN_SPEED`, and the visible `MESSAGE`.
 - `flowers.js`: world-space tulip and carnation petal geometry and surface normals.
-- `ambience.js`: tiny ASCII heart silhouettes, shimmer, drift, and star twinkles.
+- `ambience.js`: filled ASCII heart silhouettes, shimmer, drift, and star twinkles.
 - `styles.css`: full-viewport black terminal surface.
 - `app.js`: keyboard pause and reduced-motion preference.
 - `index.html`: page metadata and accessible description; keep its message in sync when changing `MESSAGE`.

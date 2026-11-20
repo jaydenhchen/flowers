@@ -1,11 +1,13 @@
 const TAU = Math.PI * 2;
 const DEPTH = -50;
 
-// Tiny fixed faces keep two lobes and a pointed, softly shaded base.
+// Rounded twin lobes, a clear notch, and a tapered point remain readable in ASCII.
 const HEART_MASK = [
-  ' + + ',
-  '+***+',
-  ' .+. ',
+  ' ##   ## ',
+  '#########',
+  ' ####### ',
+  '  #####  ',
+  '   .#.   ',
 ];
 
 // Horizontal anchors, initial journey phases, and pastel materials are deliberate:
